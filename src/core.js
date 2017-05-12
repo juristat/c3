@@ -1,4 +1,4 @@
-var c3 = { version: "0.4.11" };
+var c3 = { version: "0.4.11-juristat" };
 
 var c3_chart_fn,
     c3_chart_internal_fn,
@@ -368,6 +368,7 @@ c3_chart_internal_fn.updateSizes = function () {
         xAxisHeight = config.axis_rotated || hasArc ? 0 : $$.getHorizontalAxisHeight('x'),
         subchartHeight = config.subchart_show && !hasArc ? (config.subchart_size_height + xAxisHeight) : 0;
 
+    $$.cachedParentRectValue = null;
     $$.currentWidth = $$.getCurrentWidth();
     $$.currentHeight = $$.getCurrentHeight();
 

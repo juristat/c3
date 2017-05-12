@@ -3,7 +3,7 @@
 
     /*global define, module, exports, require */
 
-    var c3 = { version: "0.4.11" };
+    var c3 = { version: "0.4.11-juristat" };
 
     var c3_chart_fn,
         c3_chart_internal_fn,
@@ -373,6 +373,7 @@
             xAxisHeight = config.axis_rotated || hasArc ? 0 : $$.getHorizontalAxisHeight('x'),
             subchartHeight = config.subchart_show && !hasArc ? (config.subchart_size_height + xAxisHeight) : 0;
 
+        $$.cachedParentRectValue = null;
         $$.currentWidth = $$.getCurrentWidth();
         $$.currentHeight = $$.getCurrentHeight();
 
@@ -1251,6 +1252,7 @@
             gauge_min: 0,
             gauge_max: 100,
             gauge_startingAngle: -1 * Math.PI/2,
+            gauge_label_extents: undefined,
             gauge_units: undefined,
             gauge_width: undefined,
             gauge_expand: {},
@@ -2694,7 +2696,7 @@
     c3_chart_internal_fn.getCurrentHeight = function () {
         var $$ = this, config = $$.config,
             h = config.size_height ? config.size_height : $$.getParentHeight();
-        return h > 0 ? h : 320 / ($$.hasType('gauge') && !config.gauge_fullCircle ? 2 : 1); 
+        return h > 0 ? h : 320 / ($$.hasType('gauge') && !config.gauge_fullCircle ? 2 : 1);
     };
     c3_chart_internal_fn.getCurrentPaddingTop = function () {
         var $$ = this,
@@ -2734,23 +2736,33 @@
             return ceil10($$.getAxisWidthByAxisId('y2')) + legendWidthOnRight;
         }
     };
-
     c3_chart_internal_fn.getParentRectValue = function (key) {
-        var parent = this.selectChart.node(), v;
-        while (parent && parent.tagName !== 'BODY') {
-            try {
-                v = parent.getBoundingClientRect()[key];
-            } catch(e) {
-                if (key === 'width') {
-                    // In IE in certain cases getBoundingClientRect
-                    // will cause an "unspecified error"
-                    v = parent.offsetWidth;
-                }
-            }
-            if (v) {
-                break;
-            }
+        var $$ = this;
+        if ($$.cachedParentRectValue) {
+          return $$.cachedParentRectValue[key];
+        }
+        var root = this.selectChart.node(), parent = root, rect, v;
+        while (key === 'width' && !v && parent && parent.tagName !== 'BODY') {
+            v = parent.offsetWidth;
             parent = parent.parentNode;
+        }
+        while (!v && parent && parent.tagName !== 'BODY') {
+          try {
+              rect = parent.getBoundingClientRect();
+              if (rect && rect[key]) {
+                $$.cachedParentRectValue = {
+                  left: rect.left,
+                  top: rect.top,
+                  right: rect.right,
+                  bottom: rect.bottom,
+                  x: rect.x,
+                  y: rect.y,
+                  width: rect.width,
+                  height: rect.height
+                };
+              }
+              v = rect[key];
+          } catch(e) { }
         }
         return v;
     };
@@ -2784,8 +2796,8 @@
         var $$ = this, config = $$.config, h = 30;
         if (axisId === 'x' && !config.axis_x_show) { return 8; }
         if (axisId === 'x' && config.axis_x_height) { return config.axis_x_height; }
-        if (axisId === 'y' && !config.axis_y_show) { 
-            return config.legend_show && !$$.isLegendRight && !$$.isLegendInset ? 10 : 1; 
+        if (axisId === 'y' && !config.axis_y_show) {
+            return config.legend_show && !$$.isLegendRight && !$$.isLegendInset ? 10 : 1;
         }
         if (axisId === 'y2' && !config.axis_y2_show) { return $$.rotated_padding_top; }
         // Calculate x axis height when tick rotated
@@ -3445,19 +3457,49 @@
         ];
     };
     c3_chart_internal_fn.getTextRect = function (text, cls, element) {
-        var dummy = this.d3.select('body').append('div').classed('c3', true),
-            svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
-            font = this.d3.select(element).style('font'),
-            rect;
-        svg.selectAll('.dummy')
-            .data([text])
-          .enter().append('text')
-            .classed(cls ? cls : "", true)
-            .style('font', font)
-            .text(text)
-          .each(function () { rect = this.getBoundingClientRect(); });
-        dummy.remove();
-        return rect;
+        var font = this.d3.select(element).style('font');
+
+        element.cachedTextRects = element.cachedTextRects || {};
+        element.cachedTextRects[cls] = element.cachedTextRects[cls] || {};
+        element.cachedTextRects[cls][font] = element.cachedTextRects[cls][font] || [];
+
+        var cachedRects = element.cachedTextRects[cls][font], cachedRect;
+        for (var i = 0 ; i < cachedRects.length ; i++) {
+          if (cachedRects[i][0] === text) {
+            cachedRect = cachedRects[i][1];
+            break;
+          }
+        }
+
+        if (!cachedRect) {
+          var dummy = this.d3.select('body').append('div').classed('c3', true),
+              svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
+              rect;
+          svg.selectAll('.dummy')
+              .data([text])
+            .enter().append('text')
+              .classed(cls ? cls : "", true)
+              .style('font', font)
+              .text(text)
+            .each(function () { rect = this.getBoundingClientRect(); });
+          dummy.remove();
+
+          cachedRect = {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height
+          };
+        }
+
+        if (cachedRect) {
+          cachedRects.push([text, cachedRect]);
+        }
+        return cachedRect;
     };
     c3_chart_internal_fn.generateXYForText = function (areaIndices, barIndices, lineIndices, forX) {
         var $$ = this,
@@ -4631,6 +4673,9 @@
         return this.textAnchorForAxisLabel($$.config.axis_rotated, this.getY2AxisLabelPosition());
     };
     Axis.prototype.getMaxTickWidth = function getMaxTickWidth(id, withoutRecompute) {
+        if (typeof withoutRecompute === 'undefined') {
+          withoutRecompute = true;
+        }
         var $$ = this.owner, config = $$.config,
             maxWidth = 0, targetsToShow, scale, axis, dummy, svg;
         if (withoutRecompute && $$.currentMaxTickWidths[id]) {
@@ -4653,8 +4698,12 @@
             svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
             svg.append('g').call(axis).each(function () {
                 $$.d3.select(this).selectAll('text').each(function () {
-                    var box = this.getBoundingClientRect();
-                    if (maxWidth < box.width) { maxWidth = box.width; }
+                    if (this.offsetWidth && maxWidth < this.offsetWidth) {
+                      maxWidth = this.offsetWidth;
+                    } else {
+                      var box = this.getBoundingClientRect();
+                      if (maxWidth < box.width) { maxWidth = box.width; }
+                    }
                 });
                 dummy.remove();
             });
@@ -4943,6 +4992,13 @@
         return format ? format(value, ratio, id) : $$.defaultArcValueFormat(value, ratio);
     };
 
+    c3_chart_internal_fn.textForGaugeMinMax = function (value, isMax) {
+        var $$ = this,
+            format = $$.getGaugeLabelExtents();
+
+        return format ? format(value, isMax) : value;
+    };
+
     c3_chart_internal_fn.expandArc = function (targetIds) {
         var $$ = this, interval;
 
@@ -5040,6 +5096,11 @@
             format = config.donut_label_format;
         }
         return format;
+    };
+
+    c3_chart_internal_fn.getGaugeLabelExtents = function () {
+        var $$ = this, config = $$.config;
+        return config.gauge_label_extents;
     };
 
     c3_chart_internal_fn.getArcTitle = function () {
@@ -5213,11 +5274,11 @@
             $$.arcs.select('.' + CLASS.chartArcsGaugeMin)
                 .attr("dx", -1 * ($$.innerRadius + (($$.radius - $$.innerRadius) / (config.gauge_fullCircle ? 1 : 2))) + "px")
                 .attr("dy", "1.2em")
-                .text(config.gauge_label_show ? config.gauge_min : '');
+                .text(config.gauge_label_show ? $$.textForGaugeMinMax(config.gauge_min, false) : '');
             $$.arcs.select('.' + CLASS.chartArcsGaugeMax)
                 .attr("dx", $$.innerRadius + (($$.radius - $$.innerRadius) / (config.gauge_fullCircle ? 1 : 2)) + "px")
                 .attr("dy", "1.2em")
-                .text(config.gauge_label_show ? config.gauge_max : '');
+                .text(config.gauge_label_show ? $$.textForGaugeMinMax(config.gauge_max, true) : '');
         }
     };
     c3_chart_internal_fn.initGauge = function () {

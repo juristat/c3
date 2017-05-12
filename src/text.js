@@ -48,19 +48,49 @@ c3_chart_internal_fn.redrawText = function (xForText, yForText, forFlow, withTra
     ];
 };
 c3_chart_internal_fn.getTextRect = function (text, cls, element) {
-    var dummy = this.d3.select('body').append('div').classed('c3', true),
-        svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
-        font = this.d3.select(element).style('font'),
-        rect;
-    svg.selectAll('.dummy')
-        .data([text])
-      .enter().append('text')
-        .classed(cls ? cls : "", true)
-        .style('font', font)
-        .text(text)
-      .each(function () { rect = this.getBoundingClientRect(); });
-    dummy.remove();
-    return rect;
+    var font = this.d3.select(element).style('font');
+
+    element.cachedTextRects = element.cachedTextRects || {};
+    element.cachedTextRects[cls] = element.cachedTextRects[cls] || {};
+    element.cachedTextRects[cls][font] = element.cachedTextRects[cls][font] || [];
+
+    var cachedRects = element.cachedTextRects[cls][font], cachedRect;
+    for (var i = 0 ; i < cachedRects.length ; i++) {
+      if (cachedRects[i][0] === text) {
+        cachedRect = cachedRects[i][1];
+        break;
+      }
+    }
+
+    if (!cachedRect) {
+      var dummy = this.d3.select('body').append('div').classed('c3', true),
+          svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
+          rect;
+      svg.selectAll('.dummy')
+          .data([text])
+        .enter().append('text')
+          .classed(cls ? cls : "", true)
+          .style('font', font)
+          .text(text)
+        .each(function () { rect = this.getBoundingClientRect(); });
+      dummy.remove();
+
+      cachedRect = {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
+    if (cachedRect) {
+      cachedRects.push([text, cachedRect]);
+    }
+    return cachedRect;
 };
 c3_chart_internal_fn.generateXYForText = function (areaIndices, barIndices, lineIndices, forX) {
     var $$ = this,

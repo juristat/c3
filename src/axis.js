@@ -266,6 +266,9 @@ Axis.prototype.textAnchorForY2AxisLabel = function textAnchorForY2AxisLabel() {
     return this.textAnchorForAxisLabel($$.config.axis_rotated, this.getY2AxisLabelPosition());
 };
 Axis.prototype.getMaxTickWidth = function getMaxTickWidth(id, withoutRecompute) {
+    if (typeof withoutRecompute === 'undefined') {
+      withoutRecompute = true;
+    }
     var $$ = this.owner, config = $$.config,
         maxWidth = 0, targetsToShow, scale, axis, dummy, svg;
     if (withoutRecompute && $$.currentMaxTickWidths[id]) {
@@ -288,8 +291,12 @@ Axis.prototype.getMaxTickWidth = function getMaxTickWidth(id, withoutRecompute) 
         svg = dummy.append("svg").style('visibility', 'hidden').style('position', 'fixed').style('top', 0).style('left', 0),
         svg.append('g').call(axis).each(function () {
             $$.d3.select(this).selectAll('text').each(function () {
-                var box = this.getBoundingClientRect();
-                if (maxWidth < box.width) { maxWidth = box.width; }
+                if (this.offsetWidth && maxWidth < this.offsetWidth) {
+                  maxWidth = this.offsetWidth;
+                } else {
+                  var box = this.getBoundingClientRect();
+                  if (maxWidth < box.width) { maxWidth = box.width; }
+                }
             });
             dummy.remove();
         });
